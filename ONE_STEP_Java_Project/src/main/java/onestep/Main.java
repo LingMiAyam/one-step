@@ -9,11 +9,11 @@ import javax.swing.*;
 
 public class Main {
     public static void main(String[] args) {
-        // Gunakan tampilan sistem operasi agar lebih rapi
+        // fix bug tampilan
         try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
         } catch (Exception ignored) {}
-
+        
         SwingUtilities.invokeLater(() -> {
             TaskRepository repo = new SqliteTaskRepository("onestep.db");
             repo.initDatabase();
