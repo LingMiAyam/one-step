@@ -50,7 +50,7 @@ public class DetailPanel extends JPanel {
         setBackground(UiTheme.BG_MAIN);
         setBorder(new EmptyBorder(16, 20, 16, 20));
 
-        // --- NORTH: Navigasi + Judul Tugas + Progress Bar ---
+        // NORTH: Navigasi + Judul Tugas + Progress Bar 
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
         topPanel.setOpaque(false);
@@ -97,7 +97,7 @@ public class DetailPanel extends JPanel {
 
         add(topPanel, BorderLayout.NORTH);
 
-        // --- CENTER: JTable Target ---
+        // CENTER: JTable Target 
         tableTarget.setFont(UiTheme.FONT_BODY);
         tableTarget.setRowHeight(28);
         tableTarget.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -109,7 +109,7 @@ public class DetailPanel extends JPanel {
         JScrollPane scrollPane = new JScrollPane(tableTarget);
         add(scrollPane, BorderLayout.CENTER);
 
-        // --- SOUTH: Tombol Kelola Target & Ubah Status ---
+        //SOUTH: Tombol Kelola Target & Ubah Status
         JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
         bottomPanel.setOpaque(false);
 
@@ -231,9 +231,21 @@ public class DetailPanel extends JPanel {
         Goal selected = getSelectedGoal();
         if (selected == null) return;
 
+        // >>> PERBAIKAN BUG 4 (awal) <<<
+        // Simpan nomor baris yang sedang dipilih, karena loadTask() mengosongkan tabel
+        // (setRowCount(0)) sehingga pilihan baris hilang.
+        int barisTerpilih = tableTarget.getSelectedRow();
+        // >>> PERBAIKAN BUG 4 (akhir) <<<
+
         try {
             taskRepo.updateGoalStatus(selected.getId(), statusBaru);
             loadTask(currentTask.getId());
+
+            // Urutan target tidak berubah saat status diganti, jadi baris yang sama
+            // bisa dipilih kembali (dicek dulu agar tidak error kalau tabel kosong).
+            if (barisTerpilih >= 0 && barisTerpilih < tableTarget.getRowCount()) {
+                tableTarget.setRowSelectionInterval(barisTerpilih, barisTerpilih);
+            }
         } catch (DataAccessException ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
