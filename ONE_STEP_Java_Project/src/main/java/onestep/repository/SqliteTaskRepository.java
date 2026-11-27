@@ -10,6 +10,9 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+// >>> PERBAIKAN BUG 3 (awal) <<<
+import java.util.Collections;
+// >>> PERBAIKAN BUG 3 (akhir) <<<
 import java.util.List;
 
 /**
@@ -200,6 +203,12 @@ public class SqliteTaskRepository implements TaskRepository {
                    + "VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            // >>> PERBAIKAN BUG 3 (awal) <<<
+            // Sebelumnya posisi memakai nilai kiriman GUI (jumlah target + 1), yang bisa
+            // sama dengan posisi target lain setelah ada target yang dihapus.
+            // Sekarang posisi baru = posisi terbesar di tugas ini + 1 (selalu unik).
+            goal.setPosition(nextPositionForTask(conn, goal.getTaskId()));
+            // >>> PERBAIKAN BUG 3 (akhir) <<<
             ps.setInt(1, goal.getTaskId());
             ps.setString(2, goal.getDescription());
             ps.setString(3, goal.getUkuran().name());
@@ -250,20 +259,50 @@ public class SqliteTaskRepository implements TaskRepository {
         }
     }
 
+    // >>> PERBAIKAN BUG 3 (awal) <<<
+    // Posisi terbesar di tugas ini + 1 (kalau belum ada target, hasilnya 1)
+    private int nextPositionForTask(Connection conn, int taskId) throws SQLException {
+        String sql = "SELECT COALESCE(MAX(position), 0) + 1 FROM goals WHERE task_id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, taskId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 1;
+            }
+        }
+    }
+
+    //membaca urutan nyata target di database, menukar dua target itu, lalu menomori ulang semua target 1..n. Ini juga otomatis memperbaiki posisi ganda yang sudah terlanjur ada di database lama.
     @Override
     public void swapGoalPositions(Goal g1, Goal g2) {
-        String sql = "UPDATE goals SET position = ? WHERE id = ?";
+        String selectSql = "SELECT id FROM goals WHERE task_id = ? ORDER BY position ASC, id ASC";
+        String updateSql = "UPDATE goals SET position = ? WHERE id = ?";
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setInt(1, g2.getPosition());
-                ps.setInt(2, g1.getId());
-                ps.executeUpdate();
+            try {
+                List<Integer> urutan = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+                    ps.setInt(1, g1.getTaskId());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            urutan.add(rs.getInt("id"));
+                        }
+                    }
+                }
 
-                ps.setInt(1, g1.getPosition());
-                ps.setInt(2, g2.getId());
-                ps.executeUpdate();
+                int idx1 = urutan.indexOf(g1.getId());
+                int idx2 = urutan.indexOf(g2.getId());
+                if (idx1 == -1 || idx2 == -1) {
+                    throw new SQLException("Target tidak ditemukan di tugas ini.");
+                }
+                Collections.swap(urutan, idx1, idx2);
 
+                try (PreparedStatement ps = conn.prepareStatement(updateSql)) {
+                    for (int i = 0; i < urutan.size(); i++) {
+                        ps.setInt(1, i + 1);
+                        ps.setInt(2, urutan.get(i));
+                        ps.executeUpdate();
+                    }
+                }
                 conn.commit();
             } catch (SQLException ex) {
                 conn.rollback();
@@ -273,6 +312,7 @@ public class SqliteTaskRepository implements TaskRepository {
             throw new DataAccessException("Gagal mengubah urutan target.", e);
         }
     }
+
 
     private Task mapTask(ResultSet rs) throws SQLException {
         String dl = rs.getString("deadline");

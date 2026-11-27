@@ -19,9 +19,11 @@ public class SaranEngine {
 
     public SaranEngine() {
         this.daftarAturan = new ArrayList<>();
-        // Bobot 0.5 Urgensi + 0.5 Kecocokan Energi
-        this.daftarAturan.add(new UrgencyRule(0.5));
-        this.daftarAturan.add(new EnergyRule(0.5));
+        // Urgensi 0.4 + Energi 0.4 + Urutan buatan user 0.2 (total tetap 1.0)
+        this.daftarAturan.add(new UrgencyRule(0.4));
+        this.daftarAturan.add(new EnergyRule(0.4));
+        this.daftarAturan.add(new OrderRule(0.2));
+       
     }
 
     public List<HasilSaran> hitungSaran(List<Task> tasks, Energi energiHariIni) {
@@ -38,15 +40,15 @@ public class SaranEngine {
 
                 double totalSkor = 0.0;
                 AturanSaran aturanDominan = null;
-                double nilaiTertinggi = -1.0;
+                //  alasan diambil dari aturan dengan KONTRIBUSI (bobot x nilai) terbesar.
+                double kontribusiTertinggi = -1.0;
 
                 for (AturanSaran aturan : daftarAturan) {
                     double skor = aturan.skorTertimbang(goal, konteks);
                     totalSkor += skor;
 
-                    double nilaiAturan = aturan.nilai(goal, konteks);
-                    if (nilaiAturan > nilaiTertinggi) {
-                        nilaiTertinggi = nilaiAturan;
+                    if (skor > kontribusiTertinggi) {
+                        kontribusiTertinggi = skor;
                         aturanDominan = aturan;
                     }
                 }
