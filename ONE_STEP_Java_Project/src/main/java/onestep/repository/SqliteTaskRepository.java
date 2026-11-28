@@ -21,6 +21,8 @@ import java.util.List;
  */
 public class SqliteTaskRepository implements TaskRepository {
 
+    private static final String SAMPLE_SEEDED_KEY = "sample_data_seeded";
+
     private final String dbUrl;
 
     public SqliteTaskRepository(String dbFileName) {
@@ -58,40 +60,70 @@ public class SqliteTaskRepository implements TaskRepository {
                 + "FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE"
                 + ");";
 
+        String sqlMetadata = "CREATE TABLE IF NOT EXISTS app_metadata ("
+                + "meta_key TEXT PRIMARY KEY, "
+                + "meta_value TEXT NOT NULL"
+                + ");";
+
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(sqlTasks);
             stmt.execute(sqlGoals);
-            seedSampleDataIfEmpty();
+            stmt.execute(sqlMetadata);
+            seedSampleDataOnce(conn);
         } catch (SQLException e) {
             throw new DataAccessException("Gagal menginisialisasi database SQLite.", e);
         }
     }
 
     /**
-     * Mengisi data contoh otomatis saat aplikasi baru pertama kali dijalankan
-     * agar langsung siap didemokan.
+     * Mengisi data contoh otomatis hanya sekali saat pertama kali database dibuat.
+     * Jika semua tugas dihapus lalu aplikasi ditutup dan dibuka kembali, dummy tidak muncul lagi.
      */
-    private void seedSampleDataIfEmpty() {
-        if (!findAllTasksWithGoals().isEmpty()) {
+    private void seedSampleDataOnce(Connection conn) throws SQLException {
+        if (isSampleDataSeeded(conn)) {
             return;
         }
-        Task t1 = saveTask(new Task(
-                "Laporan Praktikum PBO",
-                "Laporan akhir praktikum Java GUI & OOP",
-                LocalDate.now().plusDays(3)
-        ));
-        saveGoal(new Goal(t1.getId(), "Rapikan daftar pustaka", Ukuran.S, 1));
-        saveGoal(new Goal(t1.getId(), "Buat tabel hasil uji coba", Ukuran.M, 2));
-        saveGoal(new Goal(t1.getId(), "Tulis pembahasan analisis OOP", Ukuran.L, 3));
 
-        Task t2 = saveTask(new Task(
-                "Presentasi Final Project",
-                "Slide PPT dan latihan demo aplikasi",
-                LocalDate.now().plusDays(1)
-        ));
-        saveGoal(new Goal(t2.getId(), "Cek link GitHub di makalah", Ukuran.S, 1));
-        saveGoal(new Goal(t2.getId(), "Susun slide masalah & solusi", Ukuran.M, 2));
+        if (findAllTasksWithGoals().isEmpty()) {
+            Task t1 = saveTask(new Task(
+                    "Laporan Praktikum PBO",
+                    "Laporan akhir praktikum Java GUI & OOP",
+                    LocalDate.now().plusDays(3)
+            ));
+            saveGoal(new Goal(t1.getId(), "Rapikan daftar pustaka", Ukuran.S, 1));
+            saveGoal(new Goal(t1.getId(), "Buat tabel hasil uji coba", Ukuran.M, 2));
+            saveGoal(new Goal(t1.getId(), "Tulis pembahasan analisis OOP", Ukuran.L, 3));
+
+            Task t2 = saveTask(new Task(
+                    "Presentasi Final Project",
+                    "Slide PPT dan latihan demo aplikasi",
+                    LocalDate.now().plusDays(1)
+            ));
+            saveGoal(new Goal(t2.getId(), "Cek link GitHub di makalah", Ukuran.S, 1));
+            saveGoal(new Goal(t2.getId(), "Susun slide masalah & solusi", Ukuran.M, 2));
+        }
+
+        markSampleDataSeeded(conn);
+    }
+
+    private boolean isSampleDataSeeded(Connection conn) throws SQLException {
+        String sql = "SELECT meta_value FROM app_metadata WHERE meta_key = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, SAMPLE_SEEDED_KEY);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() && "true".equals(rs.getString("meta_value"));
+            }
+        }
+    }
+
+    private void markSampleDataSeeded(Connection conn) throws SQLException {
+        String sql = "INSERT OR REPLACE INTO app_metadata (meta_key, meta_value) VALUES (?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, SAMPLE_SEEDED_KEY);
+            ps.setString(2, "true");
+            ps.executeUpdate();
+        }
     }
 
     @Override
@@ -312,7 +344,6 @@ public class SqliteTaskRepository implements TaskRepository {
             throw new DataAccessException("Gagal mengubah urutan target.", e);
         }
     }
-
 
     private Task mapTask(ResultSet rs) throws SQLException {
         String dl = rs.getString("deadline");
