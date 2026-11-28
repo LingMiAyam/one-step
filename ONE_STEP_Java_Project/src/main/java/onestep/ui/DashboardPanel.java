@@ -2,8 +2,10 @@ package onestep.ui;
 
 import onestep.exception.DataAccessException;
 import onestep.model.Energi;
+import onestep.model.Goal;
 import onestep.model.Status;
 import onestep.model.Task;
+import onestep.model.TemplateTugas;
 import onestep.repository.TaskRepository;
 import onestep.service.HasilSaran;
 import onestep.service.SaranEngine;
@@ -23,6 +25,9 @@ import java.util.List;
  * Menampilkan pemilih energi, kartu rekomendasi satu langkah, dan daftar kartu tugas.
  */
 public class DashboardPanel extends JPanel {
+    // Hijau untuk tanda "berhasil" (beda dari teal utama agar tidak tertukar dengan tombol/progres aktif)
+    private static final Color HIJAU_SELESAI = new Color(22, 128, 61);
+
     private final MainFrame mainFrame;
     private final TaskRepository taskRepo;
     private final SaranEngine saranEngine;
@@ -242,9 +247,44 @@ public class DashboardPanel extends JPanel {
             kosong.setBorder(new EmptyBorder(16, 4, 16, 4));
             panelDaftarTugas.add(kosong);
         } else {
+            // Sebelumnya semua tugas ditampilkan dalam satu daftar.
+            // Sekarang dipisah: tugas yang masih berjalan di atas, tugas selesai di bagian bawah.
+            List<Task> tugasAktif = new ArrayList<>();
+            List<Task> tugasSelesai = new ArrayList<>();
             for (Task task : daftarTugas) {
+                if (isTugasSelesai(task)) {
+                    tugasSelesai.add(task);
+                } else {
+                    tugasAktif.add(task);
+                }
+            }
+
+            if (tugasAktif.isEmpty()) {
+                JLabel semuaSelesai = new JLabel("Semua tugas sudah selesai.");
+                semuaSelesai.setFont(UiTheme.FONT_BODY);
+                semuaSelesai.setForeground(UiTheme.TEXT_MUTED);
+                semuaSelesai.setBorder(new EmptyBorder(8, 4, 8, 4));
+                semuaSelesai.setAlignmentX(Component.LEFT_ALIGNMENT);
+                panelDaftarTugas.add(semuaSelesai);
+            }
+
+            for (Task task : tugasAktif) {
                 panelDaftarTugas.add(buatKartuTugas(task));
                 panelDaftarTugas.add(Box.createVerticalStrut(10));
+            }
+
+            if (!tugasSelesai.isEmpty()) {
+                JLabel judulSelesai = new JLabel("Sudah selesai (" + tugasSelesai.size() + ")");
+                judulSelesai.setFont(UiTheme.FONT_SUBTITLE);
+                judulSelesai.setForeground(UiTheme.TEXT_MUTED);
+                judulSelesai.setBorder(new EmptyBorder(10, 2, 8, 0));
+                judulSelesai.setAlignmentX(Component.LEFT_ALIGNMENT);
+                panelDaftarTugas.add(judulSelesai);
+
+                for (Task task : tugasSelesai) {
+                    panelDaftarTugas.add(buatKartuTugas(task));
+                    panelDaftarTugas.add(Box.createVerticalStrut(10));
+                }
             }
         }
 
@@ -253,9 +293,19 @@ public class DashboardPanel extends JPanel {
         panelDaftarTugas.repaint();
     }
 
+    // Tugas dianggap selesai kalau punya target dan semua poinnya sudah selesai.
+    // Tugas tanpa target (0 dari 0 poin) BUKAN selesai.
+    private boolean isTugasSelesai(Task task) {
+        return task.getTotalPoin() > 0 && task.getPoinSelesai() >= task.getTotalPoin();
+    }
+
     private JPanel buatKartuTugas(Task task) {
+        boolean selesai = isTugasSelesai(task);
         JPanel card = new JPanel(new BorderLayout(10, 6));
-        card.setBackground(UiTheme.CARD_BG);
+        // Kartu selesai sedikit "mundur": latar abu sangat tipis, bukan putih
+        card.setBackground(selesai ? UiTheme.BG_MAIN : UiTheme.CARD_BG);
+        // Perataan kiri agar sejajar dengan judul "Sudah selesai" (BoxLayout memperhatikan alignmentX)
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 95));
         card.setBorder(new CompoundBorder(
                 new LineBorder(UiTheme.BORDER_COLOR, 1, true),
@@ -267,12 +317,19 @@ public class DashboardPanel extends JPanel {
         topRow.setOpaque(false);
         JLabel lblNama = new JLabel(task.getName());
         lblNama.setFont(UiTheme.FONT_SUBTITLE);
-        lblNama.setForeground(UiTheme.TEXT_DARK);
+        lblNama.setForeground(selesai ? UiTheme.TEXT_MUTED : UiTheme.TEXT_DARK);
 
         String dlStr = (task.getDeadline() != null) ? "Deadline: " + task.getDeadline() : "Tanpa deadline";
         JLabel lblDl = new JLabel(dlStr);
         lblDl.setFont(UiTheme.FONT_SMALL);
         lblDl.setForeground(UiTheme.TEXT_MUTED);
+        // Tugas selesai: ganti info deadline dengan kata "Selesai" berwarna hijau
+        // (tanpa simbol unicode supaya tidak bergantung pada font di komputer lain)
+        if (selesai) {
+            lblDl.setText("Selesai");
+            lblDl.setFont(new Font("SansSerif", Font.BOLD, 12));
+            lblDl.setForeground(HIJAU_SELESAI);
+        }
 
         topRow.add(lblNama, BorderLayout.WEST);
         topRow.add(lblDl, BorderLayout.EAST);
@@ -281,8 +338,13 @@ public class DashboardPanel extends JPanel {
         JProgressBar progressBar = new JProgressBar(0, 100);
         progressBar.setValue(persen);
         progressBar.setStringPainted(true);
-        progressBar.setString(String.format("%d%% (%d/%d poin)", persen, task.getPoinSelesai(), task.getTotalPoin()));
-        progressBar.setForeground(UiTheme.TEAL_MAIN);
+        if (selesai) {
+            progressBar.setString(String.format("Selesai (%d/%d poin)", task.getPoinSelesai(), task.getTotalPoin()));
+            progressBar.setForeground(HIJAU_SELESAI);
+        } else {
+            progressBar.setString(String.format("%d%% (%d/%d poin)", persen, task.getPoinSelesai(), task.getTotalPoin()));
+            progressBar.setForeground(UiTheme.TEAL_MAIN);
+        }
 
         card.add(topRow, BorderLayout.NORTH);
         card.add(progressBar, BorderLayout.SOUTH);
@@ -303,11 +365,30 @@ public class DashboardPanel extends JPanel {
         Task baru = dialog.getResultTask();
         if (baru != null) {
             try {
-                taskRepo.saveTask(baru);
+                // saveTask() mengembalikan tugas yang sudah punya id, dipakai untuk membuat target template
+                Task tersimpan = taskRepo.saveTask(baru);
+                TemplateTugas template = dialog.getSelectedTemplate();
+                if (template != null) {
+                    terapkanTemplate(tersimpan, template);
+                }
                 refreshData();
             } catch (DataAccessException ex) {
                 JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
+        }
+    }
+
+    // Membuat semua target dari template. Kalau gagal di tengah jalan, tugas yang setengah jadi
+    // dihapus lagi (target ikut terhapus lewat ON DELETE CASCADE) supaya tidak ada tugas "separuh".
+    private void terapkanTemplate(Task tugas, TemplateTugas template) {
+        try {
+            int posisi = 1;
+            for (TemplateTugas.Target t : template.getTargets()) {
+                taskRepo.saveGoal(new Goal(tugas.getId(), t.getNama(), t.getUkuran(), posisi++));
+            }
+        } catch (DataAccessException ex) {
+            taskRepo.deleteTask(tugas.getId());
+            throw ex;
         }
     }
 }
